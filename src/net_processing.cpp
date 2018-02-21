@@ -988,6 +988,9 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     case MSG_BLOCK:
     case MSG_WITNESS_BLOCK:
         return mapBlockIndex.count(inv.hash);
+    case MSG_DANDELION_TX:
+    case MSG_DANDELION_WITNESS_TX:
+        return false;
     }
     // Don't know what it is, just say we already got one
     return true;
