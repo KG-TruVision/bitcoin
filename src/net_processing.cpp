@@ -1884,7 +1884,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             bool fAlreadyHave = AlreadyHave(inv);
             LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->GetId());
 
-            if (inv.type == MSG_TX) {
+            if (inv.type == MSG_TX || inv.type == MSG_DANDELION_TX) {
                 inv.type |= nFetchFlags;
             }
 
