@@ -135,6 +135,10 @@ namespace {
     MapRelay mapRelay;
     /** Expiration-time ordered list of (expire time, relay map entry) pairs, protected by cs_main). */
     std::deque<std::pair<int64_t, MapRelay::iterator>> vRelayExpiration;
+    /** Dandelion relay map */
+    MapRelay mapDandelionRelay;
+    /** Embargo expiration time ordered list of (embargo expire time, dandelion relay map entry) pairs */
+    std::deque<std::pair<int64_t, MapRelay::iterator>> vDandelionRelayEmbargoExpiration;
 } // namespace
 
 namespace {
@@ -1193,7 +1197,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
     {
         LOCK(cs_main);
 
-        while (it != pfrom->vRecvGetData.end() && (it->type == MSG_TX || it->type == MSG_WITNESS_TX)) {
+        while (it != pfrom->vRecvGetData.end() &&
+               (it->type == MSG_TX || it->type == MSG_WITNESS_TX || it->type == MSG_DANDELION_TX || it->type == MSG_DANDELION_WITNESS_TX)) {
             if (interruptMsgProc)
                 return;
             // Don't bother if send buffer is too full to respond anyway
@@ -1205,19 +1210,36 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 
             // Send stream from relay memory
             bool push = false;
-            auto mi = mapRelay.find(inv.hash);
-            int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
-            if (mi != mapRelay.end()) {
-                connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
-                push = true;
-            } else if (pfrom->timeLastMempoolReq) {
-                auto txinfo = mempool.info(inv.hash);
-                // To protect privacy, do not answer getdata using the mempool when
-                // that TX couldn't have been INVed in reply to a MEMPOOL request.
-                if (txinfo.tx && txinfo.nTime <= pfrom->timeLastMempoolReq) {
-                    connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *txinfo.tx));
-                    push = true;
-                }
+            if(it->type == MSG_DANDELION_TX || it->type == MSG_DANDELION_WITNESS_TX) {
+              auto mi = mapDandelionRelay.find(inv.hash);
+              int nSendFlags = (inv.type == MSG_DANDELION_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
+              if (mi != mapDandelionRelay.end()) {
+                  connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::DANDELIONTX, *mi->second));
+                  push = true;
+              } else if (pfrom->timeLastMempoolReq) {
+                  auto txinfo = mempool.info(inv.hash);
+                  // To protect privacy, do not answer getdata using the mempool when
+                  // that TX couldn't have been INVed in reply to a MEMPOOL request.
+                  if (txinfo.tx && txinfo.nTime <= pfrom->timeLastMempoolReq) {
+                      connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::DANDELIONTX, *txinfo.tx));
+                      push = true;
+                  }
+              }
+            } else if(it->type == MSG_TX || it->type == MSG_WITNESS_TX) {
+              auto mi = mapRelay.find(inv.hash);
+              int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
+              if (mi != mapRelay.end()) {
+                  connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
+                  push = true;
+              } else if (pfrom->timeLastMempoolReq) {
+                  auto txinfo = mempool.info(inv.hash);
+                  // To protect privacy, do not answer getdata using the mempool when
+                  // that TX couldn't have been INVed in reply to a MEMPOOL request.
+                  if (txinfo.tx && txinfo.nTime <= pfrom->timeLastMempoolReq) {
+                      connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *txinfo.tx));
+                      push = true;
+                  }
+              }
             }
             if (!push) {
                 vNotFound.push_back(inv);
@@ -3437,10 +3459,22 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
             // Add Dandelion transactions
             for (const uint256& hash : pto->vInventoryDandelionTxToSend) {
                 vInv.push_back(CInv(MSG_DANDELION_TX, hash));
+                auto txinfo = mempool.info(hash);
+                auto ret = mapDandelionRelay.insert(std::make_pair(hash,std::move(txinfo.tx)));
+                if(ret.second) { // TODO: change embargo expiration time
+                  vDandelionRelayEmbargoExpiration.push_back(std::make_pair(nNow+15*60*1000000,ret.first));
+                }
                 if (vInv.size() == MAX_INV_SZ) {
                     connman->PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
                     vInv.clear();
                 }
+            }
+            for (auto iter = vDandelionRelayEmbargoExpiration.begin(); iter != vDandelionRelayEmbargoExpiration.end();) {
+              if(iter->first < nNow) {
+                pto->PushInventory(CInv(MSG_TX,iter->second->first));
+                mapDandelionRelay.erase(iter->second);
+                vDandelionRelayEmbargoExpiration.erase(iter);
+              }
             }
             pto->vInventoryDandelionTxToSend.clear();
 
