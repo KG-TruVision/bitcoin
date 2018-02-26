@@ -1207,7 +1207,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             // Send stream from relay memory
             bool push = false;
             if(it->type == MSG_DANDELION_TX || it->type == MSG_DANDELION_WITNESS_TX) {
-                LogPrint(BCLog::NET, "Ready to reply to getdata for Dandelion\n");
+                LogPrintf("Ready to reply to getdata for Dandelion\n");
+                push = true;
             } else if(it->type == MSG_TX || it->type == MSG_WITNESS_TX) {
                 auto mi = mapRelay.find(inv.hash);
                 int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
