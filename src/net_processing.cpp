@@ -1210,7 +1210,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 
             // Send stream from relay memory
             bool push = false;
-            if(it->type == MSG_DANDELION_TX || it->type == MSG_DANDELION_WITNESS_TX) {
+            if(inv.type == MSG_DANDELION_TX || inv.type == MSG_DANDELION_WITNESS_TX) {
               auto mi = mapDandelionRelay.find(inv.hash);
               int nSendFlags = (inv.type == MSG_DANDELION_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
               if (mi != mapDandelionRelay.end()) {
@@ -1225,7 +1225,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                       push = true;
                   }
               }
-            } else if(it->type == MSG_TX || it->type == MSG_WITNESS_TX) {
+            } else if(inv.type == MSG_TX || inv.type == MSG_WITNESS_TX) {
               auto mi = mapRelay.find(inv.hash);
               int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
               if (mi != mapRelay.end()) {
