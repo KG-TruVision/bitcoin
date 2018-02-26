@@ -3460,7 +3460,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
             for (const uint256& hash : pto->vInventoryDandelionTxToSend) {
                 vInv.push_back(CInv(MSG_DANDELION_TX, hash));
                 auto txinfo = mempool.info(hash);
-                auto ret = mapDandelionRelay.insert(std::make_pair(hash,std::move(txinfo.tx)));
+                auto ret = mapDandelionRelay.insert(std::make_pair(hash,txinfo.tx));
                 if(ret.second) { // TODO: change embargo expiration time
                   vDandelionRelayEmbargoExpiration.push_back(std::make_pair(nNow+15*60*1000000,ret.first));
                 }
