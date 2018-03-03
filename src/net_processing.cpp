@@ -1207,7 +1207,9 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             // Send stream from relay memory
             bool push = false;
             if(inv.type == MSG_DANDELION_TX || inv.type == MSG_DANDELION_WITNESS_TX) {
-                LogPrintf("Ready to reply to getdata for Dandelion\n");
+                int nSendFlags = (inv.type == MSG_DANDELION_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
+                auto txinfo = mempool.info(inv.hash);
+                connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::DANDELIONTX, *txinfo.tx));
                 push = true;
             } else if(inv.type == MSG_TX || inv.type == MSG_WITNESS_TX) {
                 auto mi = mapRelay.find(inv.hash);
