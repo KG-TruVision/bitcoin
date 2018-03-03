@@ -990,10 +990,25 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         return mapBlockIndex.count(inv.hash);
     case MSG_DANDELION_TX:
     case MSG_DANDELION_WITNESS_TX:
-        return false;
+        return mempool.exists(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
+}
+
+static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman/*, CNode* pto*/)
+{
+    CInv inv(MSG_DANDELION_TX, tx.GetHash());
+    //connman->ForEachNode([&inv, pto](CNode* pnode)
+    //{
+    //    if(pnode==pto) {
+    //      pnode->PushInventory(inv);
+    //    }
+    //});
+    connman->ForEachNode([&inv](CNode* pnode)
+    {
+        pnode->PushInventory(inv);
+    });
 }
 
 static void RelayTransaction(const CTransaction& tx, CConnman* connman)
@@ -2305,6 +2320,35 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         }
     }
 
+    else if (strCommand == NetMsgType::DANDELIONTX)
+    {
+        CTransactionRef ptx;
+        vRecv >> ptx;
+        const CTransaction& tx = *ptx;
+        CInv inv(MSG_DANDELION_TX, tx.GetHash());
+        LOCK(cs_main);
+        bool fMissingInputs = false;
+        CValidationState state;
+        std::list<CTransactionRef> lRemovedTxn;
+        if (!AlreadyHave(inv) &&
+            AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
+            RelayDandelionTransaction(tx, connman);
+            LogPrint(BCLog::MEMPOOL, "AcceptToMemoryPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
+                     pfrom->GetId(), tx.GetHash().ToString(), mempool.size(), mempool.DynamicMemoryUsage() / 1000);
+        }
+        int nDoS = 0;
+        if (state.IsInvalid(nDoS)) {
+            LogPrint(BCLog::MEMPOOLREJ, "%s from peer=%d was not accepted: %s\n", tx.GetHash().ToString(),
+                     pfrom->GetId(), FormatStateMessage(state));
+            if (state.GetRejectCode() > 0 && state.GetRejectCode() < REJECT_INTERNAL) { // Never send AcceptToMemoryPool's internal codes over P2P
+                connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::REJECT, strCommand, (unsigned char)state.GetRejectCode(),
+                                     state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash));
+            }
+            if (nDoS > 0) {
+                Misbehaving(pfrom->GetId(), nDoS);
+            }
+        }
+    }
 
     else if (strCommand == NetMsgType::CMPCTBLOCK && !fImporting && !fReindex) // Ignore blocks received while importing
     {
