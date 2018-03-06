@@ -990,7 +990,7 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         return mapBlockIndex.count(inv.hash);
     case MSG_DANDELION_TX:
     case MSG_DANDELION_WITNESS_TX:
-        return mempool.exists(inv.hash);
+        return stempool.exists(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
@@ -1223,7 +1223,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             bool push = false;
             if(inv.type == MSG_DANDELION_TX || inv.type == MSG_DANDELION_WITNESS_TX) {
                 int nSendFlags = (inv.type == MSG_DANDELION_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
-                auto txinfo = mempool.info(inv.hash);
+                auto txinfo = stempool.info(inv.hash);
                 connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::DANDELIONTX, *txinfo.tx));
                 push = true;
             } else if(inv.type == MSG_TX || inv.type == MSG_WITNESS_TX) {
@@ -2333,7 +2333,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         if (!AlreadyHave(inv) &&
             AcceptToMemoryPool(stempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
             RelayDandelionTransaction(tx, connman);
-            LogPrint(BCLog::MEMPOOL, "AcceptToMemoryPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
+            LogPrint(BCLog::MEMPOOL, "AcceptToStemPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
                      pfrom->GetId(), tx.GetHash().ToString(), stempool.size(), stempool.DynamicMemoryUsage() / 1000);
         }
         int nDoS = 0;
