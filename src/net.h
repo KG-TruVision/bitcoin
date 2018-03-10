@@ -402,6 +402,18 @@ private:
     mutable CCriticalSection cs_vNodes;
     std::atomic<NodeId> nLastNodeId;
 
+    // Dandelion fields
+    std::vector<CNode*> vDandelionInbound;
+    std::vector<CNode*> vDandelionOutbound;
+    std::map<CNode*, CNode*> mDandelionRouting;
+    std::map<uint256, CNode*> mDandelionTxDestination;
+    CNode* localDandelionOutbound = nullptr;
+    // Dandelion helper functions
+    CNode* GetDandelionDestination() const;
+    void CloseDandelionConnections(const CNode* const pnode);
+    // Dandelion debug
+    void PrintDandelionDebug(const std::string event) const;
+
     /** Services this instance offers */
     ServiceFlags nLocalServices;
 

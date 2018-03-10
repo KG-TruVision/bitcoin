@@ -914,6 +914,7 @@ size_t CConnman::SocketSendData(CNode *pnode) const
                 if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
                 {
                     LogPrintf("socket send error %s\n", NetworkErrorString(nErr));
+                    //CloseDandelionConnections(pnode);
                     pnode->CloseSocketDisconnect();
                 }
             }
@@ -1145,6 +1146,14 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
     {
         LOCK(cs_vNodes);
         vNodes.push_back(pnode);
+        // Dandelion: new inbound connection
+        vDandelionInbound.push_back(pnode);
+        if(!vDandelionOutbound.empty()) {
+          CNode* pto = GetDandelionDestination();
+          mDandelionRouting.insert(std::make_pair(pnode, pto));
+        }
+        // Dandelion debug
+        PrintDandelionDebug("New inbound connection");
     }
 }
 
@@ -1171,6 +1180,10 @@ void CConnman::ThreadSocketHandler()
                     pnode->grantOutbound.Release();
 
                     // close socket and cleanup
+                    // Dandelion cleanup
+                    CloseDandelionConnections(pnode);
+                    // Dandelion debug
+                    PrintDandelionDebug("Disconnection");
                     pnode->CloseSocketDisconnect();
 
                     // hold in disconnected pool until all refs are released
@@ -1350,8 +1363,13 @@ void CConnman::ThreadSocketHandler()
                 if (nBytes > 0)
                 {
                     bool notify = false;
-                    if (!pnode->ReceiveMsgBytes(pchBuf, nBytes, notify))
+                    if (!pnode->ReceiveMsgBytes(pchBuf, nBytes, notify)) {
+                        // Dandelion cleanup
+                        CloseDandelionConnections(pnode);
+                        // Dandelion debug
+                        PrintDandelionDebug("Disconnection");
                         pnode->CloseSocketDisconnect();
+                    }
                     RecordBytesRecv(nBytes);
                     if (notify) {
                         size_t nSizeAdded = 0;
@@ -1376,6 +1394,10 @@ void CConnman::ThreadSocketHandler()
                     if (!pnode->fDisconnect) {
                         LogPrint(BCLog::NET, "socket closed\n");
                     }
+                    // Dandelion cleanup
+                    CloseDandelionConnections(pnode);
+                    // Dandelion debug
+                    PrintDandelionDebug("Disconnection");
                     pnode->CloseSocketDisconnect();
                 }
                 else if (nBytes < 0)
@@ -1386,6 +1408,10 @@ void CConnman::ThreadSocketHandler()
                     {
                         if (!pnode->fDisconnect)
                             LogPrintf("socket recv error %s\n", NetworkErrorString(nErr));
+                        // Dandelion cleanup
+                        CloseDandelionConnections(pnode);
+                        // Dandelion debug
+                        PrintDandelionDebug("Disconnection");
                         pnode->CloseSocketDisconnect();
                     }
                 }
@@ -1988,6 +2014,10 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
     {
         LOCK(cs_vNodes);
         vNodes.push_back(pnode);
+        // Dandelion: new outbound connection
+        vDandelionOutbound.push_back(pnode);
+        // Dandelion debug
+        PrintDandelionDebug("New outbound connection");
     }
 }
 
@@ -2186,6 +2216,10 @@ void CConnman::SetNetworkActive(bool active)
         LOCK(cs_vNodes);
         // Close sockets to all nodes
         for (CNode* pnode : vNodes) {
+            // Dandelion cleanup
+            CloseDandelionConnections(pnode);
+            // Dandelion debug
+            PrintDandelionDebug("Disconnection");
             pnode->CloseSocketDisconnect();
         }
     }
@@ -2422,8 +2456,13 @@ void CConnman::Stop()
     }
 
     // Close sockets
-    for (CNode* pnode : vNodes)
+    for (CNode* pnode : vNodes) {
+        // Dandelion cleanup
+        CloseDandelionConnections(pnode);
+        // Dandelion debug
+        PrintDandelionDebug("Disconnection");
         pnode->CloseSocketDisconnect();
+    }
     for (ListenSocket& hListenSocket : vhListenSocket)
         if (hListenSocket.socket != INVALID_SOCKET)
             if (!CloseSocket(hListenSocket.socket))
@@ -2554,6 +2593,105 @@ bool CConnman::DisconnectNode(NodeId id)
         }
     }
     return false;
+}
+
+CNode* CConnman::GetDandelionDestination() const
+{
+    std::map<CNode*,uint64_t> mDandelionOutboundCount;
+    for(size_t i=0; i<vDandelionOutbound.size(); i++) {
+        mDandelionOutboundCount.insert(std::make_pair(vDandelionOutbound.at(i),0));
+    }
+    unsigned int minNumConnections = 0;
+    for(auto& e : mDandelionOutboundCount) {
+        for(auto const& f : mDandelionRouting) {
+            if(e.first == f.second) {
+                e.second+=1;
+                minNumConnections+=1;
+            }
+        }
+    }
+    for(auto const& e : mDandelionOutboundCount) {
+        if(e.second < minNumConnections) {
+            minNumConnections = e.second;
+        }
+    }
+    std::vector<CNode*> candidateDestinations;
+    for(auto const& e : mDandelionOutboundCount) {
+        if(e.second == minNumConnections) {
+            candidateDestinations.push_back(e.first);
+        }
+    }
+    FastRandomContext rng;
+    return candidateDestinations.at(rng.randrange(candidateDestinations.size()));
+}
+
+void CConnman::CloseDandelionConnections(const CNode* const pnode) {
+    if(pnode->fInbound) {
+        for(auto iter = vDandelionInbound.begin(); iter != vDandelionInbound.end();) {
+            if(*iter==pnode) {
+                iter = vDandelionInbound.erase(iter);
+            } else {
+                iter++;
+            }
+        }
+        for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
+            if(iter->first==pnode) {
+                iter = mDandelionRouting.erase(iter);
+            } else {
+                iter++;
+            }
+        }
+    } else {
+        for(auto iter = vDandelionOutbound.begin(); iter != vDandelionOutbound.end();) {
+            if(*iter==pnode) {
+                iter = vDandelionOutbound.erase(iter);
+            } else {
+                iter++;
+            }
+        }
+        CNode* newPto = GetDandelionDestination();
+        for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
+            if(iter->second==pnode) {
+                iter->second = newPto;
+            }
+        }
+        for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
+            if(iter->second==pnode) {
+                iter->second = newPto;
+            }
+        }
+    }
+}
+
+void CConnman::PrintDandelionDebug(const std::string event) const {
+    LogPrintf("%s:\n", event);
+    std::string sDandelionInbound("vDandelionInbound: ");
+    for(auto const& e : vDandelionInbound) {
+        sDandelionInbound.append(std::to_string(e->GetId())+" ");
+    }
+    LogPrintf("  %s\n", sDandelionInbound);
+    std::string sDandelionOutbound("vDandelionOutbound: ");
+    for(auto const& e : vDandelionOutbound) {
+        sDandelionOutbound.append(std::to_string(e->GetId())+" ");
+    }
+    LogPrintf("  %s\n", sDandelionOutbound);
+    std::string sDandelionRouting("mDandelionRouting: ");
+    for(auto const& e : mDandelionRouting) {
+        sDandelionRouting.append("("+std::to_string(e.first->GetId())+","+std::to_string(e.second->GetId())+") ");
+    }
+    LogPrintf("  %s\n", sDandelionRouting);
+    std::string sDandelionTxDestination("mDandelionTxDestination: ");
+    for(auto const& e : mDandelionTxDestination) {
+        sDandelionTxDestination.append("("+e.first.ToString()+","+std::to_string(e.second->GetId())+") ");
+    }
+    LogPrintf("  %s\n", sDandelionTxDestination);
+    std::string sLocalDandelionOutbound;
+    if(localDandelionOutbound==nullptr) {
+        sLocalDandelionOutbound = "nullptr";
+    } else {
+        sLocalDandelionOutbound = std::to_string(localDandelionOutbound->GetId());
+    }
+    LogPrintf("  %s\n", sLocalDandelionOutbound);
 }
 
 void CConnman::RecordBytesRecv(uint64_t bytes)
