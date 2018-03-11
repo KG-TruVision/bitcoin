@@ -1181,9 +1181,9 @@ void CConnman::ThreadSocketHandler()
 
                     // close socket and cleanup
                     // Dandelion cleanup
-                    CloseDandelionConnections(pnode);
+                    //CloseDandelionConnections(pnode);
                     // Dandelion debug
-                    PrintDandelionDebug("Disconnection");
+                    //PrintDandelionDebug("Disconnection");
                     pnode->CloseSocketDisconnect();
 
                     // hold in disconnected pool until all refs are released
@@ -1211,6 +1211,8 @@ void CConnman::ThreadSocketHandler()
                     }
                     if (fDelete) {
                         vNodesDisconnected.remove(pnode);
+                        CloseDandelionConnections(pnode);     // Dandelion cleanup
+                        PrintDandelionDebug("Disconnection"); // Dandelion debug
                         DeleteNode(pnode);
                     }
                 }
@@ -1365,9 +1367,9 @@ void CConnman::ThreadSocketHandler()
                     bool notify = false;
                     if (!pnode->ReceiveMsgBytes(pchBuf, nBytes, notify)) {
                         // Dandelion cleanup
-                        CloseDandelionConnections(pnode);
+                        //CloseDandelionConnections(pnode);
                         // Dandelion debug
-                        PrintDandelionDebug("Disconnection");
+                        //PrintDandelionDebug("Disconnection");
                         pnode->CloseSocketDisconnect();
                     }
                     RecordBytesRecv(nBytes);
@@ -1395,9 +1397,9 @@ void CConnman::ThreadSocketHandler()
                         LogPrint(BCLog::NET, "socket closed\n");
                     }
                     // Dandelion cleanup
-                    CloseDandelionConnections(pnode);
+                    //CloseDandelionConnections(pnode);
                     // Dandelion debug
-                    PrintDandelionDebug("Disconnection");
+                    //PrintDandelionDebug("Disconnection");
                     pnode->CloseSocketDisconnect();
                 }
                 else if (nBytes < 0)
@@ -1409,9 +1411,9 @@ void CConnman::ThreadSocketHandler()
                         if (!pnode->fDisconnect)
                             LogPrintf("socket recv error %s\n", NetworkErrorString(nErr));
                         // Dandelion cleanup
-                        CloseDandelionConnections(pnode);
+                        //CloseDandelionConnections(pnode);
                         // Dandelion debug
-                        PrintDandelionDebug("Disconnection");
+                        //PrintDandelionDebug("Disconnection");
                         pnode->CloseSocketDisconnect();
                     }
                 }
@@ -2217,9 +2219,9 @@ void CConnman::SetNetworkActive(bool active)
         // Close sockets to all nodes
         for (CNode* pnode : vNodes) {
             // Dandelion cleanup
-            CloseDandelionConnections(pnode);
+            //CloseDandelionConnections(pnode);
             // Dandelion debug
-            PrintDandelionDebug("Disconnection");
+            //PrintDandelionDebug("Disconnection");
             pnode->CloseSocketDisconnect();
         }
     }
@@ -2467,9 +2469,9 @@ void CConnman::Stop()
     // clean up some globals (to help leak detection)
     for (CNode *pnode : vNodes) {
         // Dandelion cleanup
-        CloseDandelionConnections(pnode);
+        //CloseDandelionConnections(pnode);
         // Dandelion debug
-        PrintDandelionDebug("Disconnection");
+        //PrintDandelionDebug("Disconnection");
         DeleteNode(pnode);
     }
     for (CNode *pnode : vNodesDisconnected) {
