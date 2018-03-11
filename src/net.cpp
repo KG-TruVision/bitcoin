@@ -2457,10 +2457,6 @@ void CConnman::Stop()
 
     // Close sockets
     for (CNode* pnode : vNodes) {
-        // Dandelion cleanup
-        CloseDandelionConnections(pnode);
-        // Dandelion debug
-        PrintDandelionDebug("Disconnection");
         pnode->CloseSocketDisconnect();
     }
     for (ListenSocket& hListenSocket : vhListenSocket)
@@ -2470,6 +2466,10 @@ void CConnman::Stop()
 
     // clean up some globals (to help leak detection)
     for (CNode *pnode : vNodes) {
+        // Dandelion cleanup
+        CloseDandelionConnections(pnode);
+        // Dandelion debug
+        PrintDandelionDebug("Disconnection");
         DeleteNode(pnode);
     }
     for (CNode *pnode : vNodesDisconnected) {
