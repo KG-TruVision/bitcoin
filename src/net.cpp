@@ -2622,7 +2622,11 @@ CNode* CConnman::GetDandelionDestination() const
         }
     }
     FastRandomContext rng;
-    return candidateDestinations.at(rng.randrange(candidateDestinations.size()));
+    CNode* dandelionDestination = nullptr;
+    if(candidateDestinations.size()>0) {
+        dandelionDestination = candidateDestinations.at(rng.randrange(candidateDestinations.size()));
+    }
+    return dandelionDestination;
 }
 
 void CConnman::CloseDandelionConnections(const CNode* const pnode) {
@@ -2650,14 +2654,31 @@ void CConnman::CloseDandelionConnections(const CNode* const pnode) {
             }
         }
         CNode* newPto = GetDandelionDestination();
-        for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
-            if(iter->second==pnode) {
-                iter->second = newPto;
+        if(newPto==nullptr) {
+            for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
+                if(iter->second==pnode) {
+                    iter = mDandelionRouting.erase(iter);
+                } else {
+                    iter++;
+                }
             }
-        }
-        for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
-            if(iter->second==pnode) {
-                iter->second = newPto;
+            for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
+                if(iter->second==pnode) {
+                    iter = mDandelionTxDestination.erase(iter);
+                } else {
+                    iter++;
+                }
+            }
+        } else {
+            for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
+                if(iter->second==pnode) {
+                    iter->second = newPto;
+                }
+            }
+            for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
+                if(iter->second==pnode) {
+                    iter->second = newPto;
+                }
             }
         }
     }
@@ -2685,11 +2706,11 @@ void CConnman::PrintDandelionDebug(const std::string event) const {
         sDandelionTxDestination.append("("+e.first.ToString()+","+std::to_string(e.second->GetId())+") ");
     }
     LogPrintf("  %s\n", sDandelionTxDestination);
-    std::string sLocalDandelionOutbound;
+    std::string sLocalDandelionOutbound("localDandelionOutbound: ");
     if(localDandelionOutbound==nullptr) {
-        sLocalDandelionOutbound = "nullptr";
+        sLocalDandelionOutbound.append("nullptr");
     } else {
-        sLocalDandelionOutbound = std::to_string(localDandelionOutbound->GetId());
+        sLocalDandelionOutbound.append(std::to_string(localDandelionOutbound->GetId()));
     }
     LogPrintf("  %s\n", sLocalDandelionOutbound);
 }
