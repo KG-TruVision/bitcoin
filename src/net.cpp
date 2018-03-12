@@ -1205,9 +1205,9 @@ void CConnman::ThreadSocketHandler()
                         }
                     }
                     if (fDelete) {
-                        vNodesDisconnected.remove(pnode);
                         CloseDandelionConnections(pnode);     // Dandelion cleanup
                         PrintDandelionDebug("Disconnection"); // Dandelion debug
+                        vNodesDisconnected.remove(pnode);
                         DeleteNode(pnode);
                     }
                 }
@@ -2651,11 +2651,13 @@ void CConnman::CloseDandelionConnections(const CNode* const pnode) {
                 if(iter->second==pnode) {
                     iter->second = newPto;
                 }
+                iter++;
             }
             for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
                 if(iter->second==pnode) {
                     iter->second = newPto;
                 }
+                iter++;
             }
         }
     }
