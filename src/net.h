@@ -412,7 +412,7 @@ private:
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);
     // Dandelion debug
-    void PrintDandelionDebug(const std::string event) const;
+    std::string GetDandelionRoutingDataDebugString() const;
 
     /** Services this instance offers */
     ServiceFlags nLocalServices;

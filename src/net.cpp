@@ -1151,8 +1151,7 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
           CNode* pto = GetDandelionDestination();
           mDandelionRouting.insert(std::make_pair(pnode, pto));
         }
-        // Dandelion debug
-        PrintDandelionDebug("New inbound connection");
+        LogPrint(BCLog::DANDELION, "Added inbound Dandelion connection:\n%s", GetDandelionRoutingDataDebugString());
     }
 }
 
@@ -1206,7 +1205,7 @@ void CConnman::ThreadSocketHandler()
                     }
                     if (fDelete) {
                         CloseDandelionConnections(pnode);     // Dandelion cleanup
-                        PrintDandelionDebug("Disconnection"); // Dandelion debug
+                        LogPrint(BCLog::DANDELION, "Removed Dandelion connection:\n%s", GetDandelionRoutingDataDebugString());
                         vNodesDisconnected.remove(pnode);
                         DeleteNode(pnode);
                     }
@@ -2001,8 +2000,7 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
         vNodes.push_back(pnode);
         // Dandelion: new outbound connection
         vDandelionOutbound.push_back(pnode);
-        // Dandelion debug
-        PrintDandelionDebug("New outbound connection");
+        LogPrint(BCLog::DANDELION, "Added outbound Dandelion connection:\n%s", GetDandelionRoutingDataDebugString());
     }
 }
 
@@ -2663,35 +2661,36 @@ void CConnman::CloseDandelionConnections(const CNode* const pnode) {
     }
 }
 
-void CConnman::PrintDandelionDebug(const std::string event) const {
-    LogPrintf("%s:\n", event);
-    std::string sDandelionInbound("vDandelionInbound: ");
+std::string CConnman::GetDandelionRoutingDataDebugString() const {
+    std::string dandelionRoutingDataDebugString = "";
+    dandelionRoutingDataDebugString.append("  vDandelionInbound: ");
     for(auto const& e : vDandelionInbound) {
-        sDandelionInbound.append(std::to_string(e->GetId())+" ");
+        dandelionRoutingDataDebugString.append(std::to_string(e->GetId())+" ");
     }
-    LogPrintf("  %s\n", sDandelionInbound);
-    std::string sDandelionOutbound("vDandelionOutbound: ");
+    dandelionRoutingDataDebugString.append("\n");
+    dandelionRoutingDataDebugString.append("  vDandelionOutbound: ");
     for(auto const& e : vDandelionOutbound) {
-        sDandelionOutbound.append(std::to_string(e->GetId())+" ");
+        dandelionRoutingDataDebugString.append(std::to_string(e->GetId())+" ");
     }
-    LogPrintf("  %s\n", sDandelionOutbound);
-    std::string sDandelionRouting("mDandelionRouting: ");
+    dandelionRoutingDataDebugString.append("\n");
+    dandelionRoutingDataDebugString.append("  mDandelionRouting: ");
     for(auto const& e : mDandelionRouting) {
-        sDandelionRouting.append("("+std::to_string(e.first->GetId())+","+std::to_string(e.second->GetId())+") ");
+        dandelionRoutingDataDebugString.append("("+std::to_string(e.first->GetId())+","+std::to_string(e.second->GetId())+") ");
     }
-    LogPrintf("  %s\n", sDandelionRouting);
-    std::string sDandelionTxDestination("mDandelionTxDestination: ");
+    dandelionRoutingDataDebugString.append("\n");
+    dandelionRoutingDataDebugString.append("  mDandelionTxDestination: ");
     for(auto const& e : mDandelionTxDestination) {
-        sDandelionTxDestination.append("("+e.first.ToString()+","+std::to_string(e.second->GetId())+") ");
+        dandelionRoutingDataDebugString.append("("+e.first.ToString()+","+std::to_string(e.second->GetId())+") ");
     }
-    LogPrintf("  %s\n", sDandelionTxDestination);
-    std::string sLocalDandelionOutbound("localDandelionOutbound: ");
+    dandelionRoutingDataDebugString.append("\n");
+    dandelionRoutingDataDebugString.append("  localDandelionOutbound: ");
     if(localDandelionOutbound==nullptr) {
-        sLocalDandelionOutbound.append("nullptr");
+        dandelionRoutingDataDebugString.append("nullptr");
     } else {
-        sLocalDandelionOutbound.append(std::to_string(localDandelionOutbound->GetId()));
+        dandelionRoutingDataDebugString.append(std::to_string(localDandelionOutbound->GetId()));
     }
-    LogPrintf("  %s\n", sLocalDandelionOutbound);
+    dandelionRoutingDataDebugString.append("\n");
+    return dandelionRoutingDataDebugString;
 }
 
 void CConnman::RecordBytesRecv(uint64_t bytes)
