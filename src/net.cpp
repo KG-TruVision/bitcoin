@@ -1463,6 +1463,18 @@ void CConnman::WakeMessageHandler()
     condMsgProc.notify_one();
 }
 
+bool CConnman::isDandelionInbound(const CNode* const pnode) const {
+    return (std::find(vDandelionInbound.begin(), vDandelionInbound.end(), pnode) != vDandelionInbound.end());
+}
+
+CNode* CConnman::getDandelionDestination(const CNode* const pfrom) const {
+    for (auto const& e : mDandelionRouting) {
+        if (pfrom==e.first) {
+            return e.second;
+        }
+    }
+    return nullptr;
+}
 
 
 

@@ -314,6 +314,11 @@ public:
     unsigned int GetReceiveFloodSize() const;
 
     void WakeMessageHandler();
+
+    // Dandelion methods
+    bool isDandelionInbound(const CNode* const pnode) const;
+    CNode* getDandelionDestination(const CNode* const pfrom) const;
+
 private:
     struct ListenSocket {
         SOCKET socket;
@@ -405,9 +410,9 @@ private:
     // Dandelion fields
     std::vector<CNode*> vDandelionInbound;
     std::vector<CNode*> vDandelionOutbound;
-    std::map<CNode*, CNode*> mDandelionRouting;
-    std::map<uint256, CNode*> mDandelionTxDestination;
     CNode* localDandelionOutbound = nullptr;
+    std::map<CNode*, CNode*> mDandelionRouting;
+    std::map<uint256, CNode*> mDandelionTxDestination; // Remove in future commit
     // Dandelion helper functions
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);
@@ -691,6 +696,8 @@ public:
 
     // inventory based relay
     CRollingBloomFilter filterInventoryKnown;
+    // Set of Dandelion transactions that should be known to this peer
+    std::set<uint256> setDandelionInventoryKnown;
     // Set of transaction ids we still have to announce.
     // They are sorted by the mempool before relay, so the order is not important.
     std::set<uint256> setInventoryTxToSend;
@@ -839,10 +846,12 @@ public:
             if (!filterInventoryKnown.contains(inv.hash)) {
                 setInventoryTxToSend.insert(inv.hash);
             }
+        } else if(inv.type == MSG_DANDELION_TX) {
+            if (setDandelionInventoryKnown.count(inv.hash)==0) {
+                vInventoryDandelionTxToSend.push_back(inv.hash);
+            }
         } else if (inv.type == MSG_BLOCK) {
             vInventoryBlockToSend.push_back(inv.hash);
-        } else if (inv.type == MSG_DANDELION_TX) {
-            vInventoryDandelionTxToSend.push_back(inv.hash);
         }
     }
 

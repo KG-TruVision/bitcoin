@@ -990,25 +990,20 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         return mapBlockIndex.count(inv.hash);
     case MSG_DANDELION_TX:
     case MSG_DANDELION_WITNESS_TX:
-        return stempool.exists(inv.hash);
+        // Do not use AlreadyHave for Dandelion transactions; returns false
+        return false;
     }
     // Don't know what it is, just say we already got one
     return true;
 }
 
-static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman/*, CNode* pto*/)
+static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman, const CNode* const pfrom)
 {
     CInv inv(MSG_DANDELION_TX, tx.GetHash());
-    //connman->ForEachNode([&inv, pto](CNode* pnode)
-    //{
-    //    if(pnode==pto) {
-    //      pnode->PushInventory(inv);
-    //    }
-    //});
-    connman->ForEachNode([&inv](CNode* pnode)
-    {
-        pnode->PushInventory(inv);
-    });
+    CNode* destination = connman->getDandelionDestination(pfrom);
+    if (destination!=nullptr) {
+        destination->PushInventory(inv);
+    }
 }
 
 static void RelayTransaction(const CTransaction& tx, CConnman* connman)
@@ -1923,6 +1918,15 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                     LogPrint(BCLog::NET, "getheaders (%d) %s to peer=%d\n", pindexBestHeader->nHeight, inv.hash.ToString(), pfrom->GetId());
                 }
             }
+            else if (inv.type == MSG_DANDELION_TX) {
+                auto result = pfrom->setDandelionInventoryKnown.insert(inv.hash);
+                fAlreadyHave = !result.second;
+                if (fBlocksOnly) {
+                    LogPrint(BCLog::NET, "transaction (%s) inv sent in violation of protocol peer=%d\n", inv.hash.ToString(), pfrom->GetId());
+                } else if (!fAlreadyHave && !fImporting && !fReindex && !IsInitialBlockDownload() && connman->isDandelionInbound(pfrom)) {
+                    pfrom->AskFor(inv);
+                }
+            }
             else
             {
                 pfrom->AddInventoryKnown(inv);
@@ -2330,11 +2334,15 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         bool fMissingInputs = false;
         CValidationState state;
         std::list<CTransactionRef> lRemovedTxn;
-        if (!AlreadyHave(inv) &&
-            AcceptToMemoryPool(stempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
-            RelayDandelionTransaction(tx, connman);
-            LogPrint(BCLog::MEMPOOL, "AcceptToStemPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
-                     pfrom->GetId(), tx.GetHash().ToString(), stempool.size(), stempool.DynamicMemoryUsage() / 1000);
+        if (connman->isDandelionInbound(pfrom)) {
+            if (!stempool.exists(inv.hash)) {
+                AcceptToMemoryPool(stempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+                LogPrint(BCLog::MEMPOOL, "AcceptToStemPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
+                         pfrom->GetId(), tx.GetHash().ToString(), stempool.size(), stempool.DynamicMemoryUsage() / 1000);
+            }
+            if (stempool.exists(inv.hash)) {
+                RelayDandelionTransaction(tx, connman, pfrom);
+            }
         }
         int nDoS = 0;
         if (state.IsInvalid(nDoS)) {
@@ -3488,6 +3496,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
 
             // Add Dandelion transactions
             for (const uint256& hash : pto->vInventoryDandelionTxToSend) {
+                pto->setDandelionInventoryKnown.insert(hash);
                 vInv.push_back(CInv(MSG_DANDELION_TX, hash));
                 if (vInv.size() == MAX_INV_SZ) {
                     connman->PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
