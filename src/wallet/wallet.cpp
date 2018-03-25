@@ -1760,12 +1760,16 @@ bool CWalletTx::RelayWalletTransaction(CConnman* connman)
         if (InMempool() || AcceptToMemoryPool(maxTxFee, state)) {
             LogPrintf("Relaying wtx %s\n", GetHash().ToString());
             if (connman) {
+                if (!connman->isLocalDandelionOutboundSet()) {
+                    connman->setLocalDandelionOutbound();
+                }
                 CInv inv(MSG_DANDELION_TX, GetHash());
-                connman->ForEachNode([&inv](CNode* pnode)
-                {
-                    pnode->PushInventory(inv);
-                });
-                return true;
+                if (connman->isLocalDandelionOutboundSet()) {
+                    return connman->localDandelionOutboundPushInventory(inv);
+                } else {
+                    //connman->AddDandelionTxToShelf(inv);
+                    return false;
+                }
             }
         }
     }

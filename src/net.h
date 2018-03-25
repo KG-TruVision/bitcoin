@@ -318,6 +318,9 @@ public:
     // Dandelion methods
     bool isDandelionInbound(const CNode* const pnode) const;
     CNode* getDandelionDestination(const CNode* const pfrom) const;
+    bool isLocalDandelionOutboundSet() const;
+    bool setLocalDandelionOutbound();
+    bool localDandelionOutboundPushInventory(const CInv& inv);
 
 private:
     struct ListenSocket {
@@ -412,7 +415,6 @@ private:
     std::vector<CNode*> vDandelionOutbound;
     CNode* localDandelionOutbound = nullptr;
     std::map<CNode*, CNode*> mDandelionRouting;
-    std::map<uint256, CNode*> mDandelionTxDestination; // Remove in future commit
     // Dandelion helper functions
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);

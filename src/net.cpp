@@ -1476,6 +1476,29 @@ CNode* CConnman::getDandelionDestination(const CNode* const pfrom) const {
     return nullptr;
 }
 
+bool CConnman::isLocalDandelionOutboundSet() const {
+    if(localDandelionOutbound==nullptr) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+bool CConnman::setLocalDandelionOutbound() {
+    if(!isLocalDandelionOutboundSet()) {
+        localDandelionOutbound = GetDandelionDestination();
+    }
+    return isLocalDandelionOutboundSet();
+}
+
+bool CConnman::localDandelionOutboundPushInventory(const CInv& inv) {
+    if(isLocalDandelionOutboundSet()) {
+        localDandelionOutbound->PushInventory(inv);
+        return true;
+    } else {
+        return false;
+    }
+}
 
 
 
@@ -2617,59 +2640,42 @@ CNode* CConnman::GetDandelionDestination() const
 }
 
 void CConnman::CloseDandelionConnections(const CNode* const pnode) {
-    if(pnode->fInbound) {
-        for(auto iter = vDandelionInbound.begin(); iter != vDandelionInbound.end();) {
-            if(*iter==pnode) {
-                iter = vDandelionInbound.erase(iter);
-            } else {
-                iter++;
-            }
+    // Remove pnode from vDandelionInbound, if present
+    for (auto iter=vDandelionInbound.begin(); iter!=vDandelionInbound.end();) {
+        if (*iter==pnode) {
+            iter=vDandelionInbound.erase(iter);
+        } else {
+            iter++;
         }
-        for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
-            if(iter->first==pnode) {
-                iter = mDandelionRouting.erase(iter);
-            } else {
-                iter++;
-            }
+    }
+    // Remove pnode from vDandelionOutbound, if present
+    for (auto iter=vDandelionOutbound.begin(); iter!=vDandelionOutbound.end();) {
+        if (*iter==pnode) {
+            iter=vDandelionOutbound.erase(iter);
+        } else {
+            iter++;
         }
-    } else {
-        for(auto iter = vDandelionOutbound.begin(); iter != vDandelionOutbound.end();) {
-            if(*iter==pnode) {
-                iter = vDandelionOutbound.erase(iter);
+    }
+    // Generate a replacement pnode, to be used if necessary
+    CNode* newPto=GetDandelionDestination();
+    // Remove from mDandelion routing, if present; if destination, try to replace
+    for(auto iter=mDandelionRouting.begin(); iter!=mDandelionRouting.end();) {
+        if (iter->first==pnode) {
+            iter=mDandelionRouting.erase(iter);
+        } else if (iter->second==pnode) {
+            if (newPto==nullptr) {
+                iter=mDandelionRouting.erase(iter);
             } else {
+                iter->second=newPto;
                 iter++;
-            }
-        }
-        CNode* newPto = GetDandelionDestination();
-        if(newPto==nullptr) {
-            for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
-                if(iter->second==pnode) {
-                    iter = mDandelionRouting.erase(iter);
-                } else {
-                    iter++;
-                }
-            }
-            for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
-                if(iter->second==pnode) {
-                    iter = mDandelionTxDestination.erase(iter);
-                } else {
-                    iter++;
-                }
             }
         } else {
-            for(auto iter = mDandelionRouting.begin(); iter != mDandelionRouting.end();) {
-                if(iter->second==pnode) {
-                    iter->second = newPto;
-                }
-                iter++;
-            }
-            for(auto iter = mDandelionTxDestination.begin(); iter != mDandelionTxDestination.end();) {
-                if(iter->second==pnode) {
-                    iter->second = newPto;
-                }
-                iter++;
-            }
+            iter++;
         }
+    }
+    // Replace localDandelionOutbound if equal to pnode
+    if (localDandelionOutbound==pnode) {
+        localDandelionOutbound=newPto;
     }
 }
 
@@ -2688,11 +2694,6 @@ std::string CConnman::GetDandelionRoutingDataDebugString() const {
     dandelionRoutingDataDebugString.append("  mDandelionRouting: ");
     for(auto const& e : mDandelionRouting) {
         dandelionRoutingDataDebugString.append("("+std::to_string(e.first->GetId())+","+std::to_string(e.second->GetId())+") ");
-    }
-    dandelionRoutingDataDebugString.append("\n");
-    dandelionRoutingDataDebugString.append("  mDandelionTxDestination: ");
-    for(auto const& e : mDandelionTxDestination) {
-        dandelionRoutingDataDebugString.append("("+e.first.ToString()+","+std::to_string(e.second->GetId())+") ");
     }
     dandelionRoutingDataDebugString.append("\n");
     dandelionRoutingDataDebugString.append("  localDandelionOutbound: ");
