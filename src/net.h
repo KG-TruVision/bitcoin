@@ -317,10 +317,11 @@ public:
 
     // Dandelion methods
     bool isDandelionInbound(const CNode* const pnode) const;
-    CNode* getDandelionDestination(const CNode* const pfrom) const;
+    CNode* getDandelionDestination(CNode* pfrom);
     bool isLocalDandelionOutboundSet() const;
     bool setLocalDandelionOutbound();
     bool localDandelionOutboundPushInventory(const CInv& inv);
+    std::string dandelionRoutingDataToString() const;
 
 private:
     struct ListenSocket {

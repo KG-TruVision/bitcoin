@@ -1762,6 +1762,7 @@ bool CWalletTx::RelayWalletTransaction(CConnman* connman)
             if (connman) {
                 if (!connman->isLocalDandelionOutboundSet()) {
                     connman->setLocalDandelionOutbound();
+                    LogPrint(BCLog::DANDELION, "Added local Dandelion outbound connection:\n%s", connman->dandelionRoutingDataToString());
                 }
                 CInv inv(MSG_DANDELION_TX, GetHash());
                 if (connman->isLocalDandelionOutboundSet()) {

@@ -1467,11 +1467,17 @@ bool CConnman::isDandelionInbound(const CNode* const pnode) const {
     return (std::find(vDandelionInbound.begin(), vDandelionInbound.end(), pnode) != vDandelionInbound.end());
 }
 
-CNode* CConnman::getDandelionDestination(const CNode* const pfrom) const {
+CNode* CConnman::getDandelionDestination(CNode* pfrom) {
     for (auto const& e : mDandelionRouting) {
         if (pfrom==e.first) {
             return e.second;
         }
+    }
+    if (!vDandelionOutbound.empty()) {
+        CNode* pto = GetDandelionDestination();
+        mDandelionRouting.insert(std::make_pair(pfrom, pto));
+        LogPrint(BCLog::DANDELION, "Added Dandelion route:\n%s", GetDandelionRoutingDataDebugString());
+        return pto;
     }
     return nullptr;
 }
@@ -1500,6 +1506,9 @@ bool CConnman::localDandelionOutboundPushInventory(const CInv& inv) {
     }
 }
 
+std::string CConnman::dandelionRoutingDataToString() const {
+    return GetDandelionRoutingDataDebugString();
+}
 
 
 

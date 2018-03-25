@@ -997,7 +997,7 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     return true;
 }
 
-static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman, const CNode* const pfrom)
+static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman, CNode* pfrom)
 {
     CInv inv(MSG_DANDELION_TX, tx.GetHash());
     CNode* destination = connman->getDandelionDestination(pfrom);
