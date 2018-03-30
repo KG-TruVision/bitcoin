@@ -87,6 +87,9 @@ static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
 // NOTE: When adjusting this, update rpcnet:setban's help ("24h")
 static const unsigned int DEFAULT_MISBEHAVING_BANTIME = 60 * 60 * 24;  // Default 24-hour ban
 
+/** The average interval in seconds between Dandelion shuffles */
+static const int DANDELION_SHUFFLE_INTERVAL = 60; // 60 for testing purposes; change to ~600 later
+
 typedef int64_t NodeId;
 
 struct AddedNodeInfo
@@ -342,6 +345,7 @@ private:
     void AcceptConnection(const ListenSocket& hListenSocket);
     void ThreadSocketHandler();
     void ThreadDNSAddressSeed();
+    void ThreadDandelionShuffle();
 
     uint64_t CalculateKeyedNetGroup(const CAddress& ad) const;
 
@@ -419,6 +423,7 @@ private:
     // Dandelion helper functions
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);
+    void DandelionShuffle();
     // Dandelion debug
     std::string GetDandelionRoutingDataDebugString() const;
 
@@ -452,6 +457,7 @@ private:
     std::thread threadOpenAddedConnections;
     std::thread threadOpenConnections;
     std::thread threadMessageHandler;
+    std::thread threadDandelionShuffle;
 
     /** flag for deciding to connect to an extra outbound peer,
      *  in excess of nMaxOutbound

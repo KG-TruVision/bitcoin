@@ -1463,6 +1463,22 @@ void CConnman::WakeMessageHandler()
     condMsgProc.notify_one();
 }
 
+void CConnman::ThreadDandelionShuffle() {
+    int64_t nCurrTime = GetTimeMicros();
+    int64_t nNextDandelionShuffle = PoissonNextSend(nCurrTime, DANDELION_SHUFFLE_INTERVAL);
+    while (!interruptNet) {
+        nCurrTime = GetTimeMicros();
+        if (nCurrTime > nNextDandelionShuffle) {
+            DandelionShuffle();
+            nNextDandelionShuffle = PoissonNextSend(nCurrTime, DANDELION_SHUFFLE_INTERVAL);
+            // Sleep until the next shuffle time
+            if (!interruptNet.sleep_for(std::chrono::milliseconds((nNextDandelionShuffle-nCurrTime)/1000))) {
+                return;
+            }
+        }
+    }
+}
+
 bool CConnman::isDandelionInbound(const CNode* const pnode) const {
     return (std::find(vDandelionInbound.begin(), vDandelionInbound.end(), pnode) != vDandelionInbound.end());
 }
@@ -2414,6 +2430,9 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     // Process messages
     threadMessageHandler = std::thread(&TraceThread<std::function<void()> >, "msghand", std::function<void()>(std::bind(&CConnman::ThreadMessageHandler, this)));
 
+    // Dandelion shuffle
+    threadDandelionShuffle = std::thread(&TraceThread<std::function<void()> >, "dandelion", std::function<void()>(std::bind(&CConnman::ThreadDandelionShuffle, this)));
+
     // Dump network addresses
     scheduler.scheduleEvery(std::bind(&CConnman::DumpData, this), DUMP_ADDRESSES_INTERVAL * 1000);
 
@@ -2471,6 +2490,8 @@ void CConnman::Stop()
         threadDNSAddressSeed.join();
     if (threadSocketHandler.joinable())
         threadSocketHandler.join();
+    if (threadDandelionShuffle.joinable())
+        threadDandelionShuffle.join();
 
     if (fAddressesInitialized)
     {
@@ -2686,6 +2707,36 @@ void CConnman::CloseDandelionConnections(const CNode* const pnode) {
     if (localDandelionOutbound==pnode) {
         localDandelionOutbound=newPto;
     }
+}
+
+void CConnman::DandelionShuffle() {
+    // Dandelion debug message
+    LogPrint(BCLog::DANDELION, "Before Dandelion shuffle:\n%s", GetDandelionRoutingDataDebugString());
+    {
+        // Lock node pointers
+        LOCK(cs_vNodes);
+        // Erase all routes
+        for (auto pnode : vDandelionInbound) {
+            auto pair = mDandelionRouting.find(pnode);
+            if (pair != mDandelionRouting.end()) {
+                pair->second->setDandelionInventoryKnown.clear();
+                mDandelionRouting.erase(pair);
+            }
+        }
+        if (localDandelionOutbound!=nullptr) {
+            localDandelionOutbound->setDandelionInventoryKnown.clear();
+            localDandelionOutbound = nullptr;
+        }
+        // Generate new routes
+        if (!vDandelionOutbound.empty()) {
+            for (auto pnode : vDandelionInbound) {
+                mDandelionRouting.insert(std::make_pair(pnode, GetDandelionDestination()));
+            }
+            localDandelionOutbound = GetDandelionDestination();
+        }
+    }
+    // Dandelion debug message
+    LogPrint(BCLog::DANDELION, "After Dandelion shuffle:\n%s", GetDandelionRoutingDataDebugString());
 }
 
 std::string CConnman::GetDandelionRoutingDataDebugString() const {
