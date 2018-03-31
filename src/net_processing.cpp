@@ -997,15 +997,6 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     return true;
 }
 
-static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman, CNode* pfrom)
-{
-    CInv inv(MSG_DANDELION_TX, tx.GetHash());
-    CNode* destination = connman->getDandelionDestination(pfrom);
-    if (destination!=nullptr) {
-        destination->PushInventory(inv);
-    }
-}
-
 static void RelayTransaction(const CTransaction& tx, CConnman* connman)
 {
     CInv inv(MSG_TX, tx.GetHash());
@@ -1013,6 +1004,25 @@ static void RelayTransaction(const CTransaction& tx, CConnman* connman)
     {
         pnode->PushInventory(inv);
     });
+}
+
+static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman, CNode* pfrom)
+{
+    FastRandomContext rng;
+    if (rng.randrange(100)>=DANDELION_FLUFF) {
+        CInv inv(MSG_DANDELION_TX, tx.GetHash());
+        CNode* destination = connman->getDandelionDestination(pfrom);
+        if (destination!=nullptr) {
+            destination->PushInventory(inv);
+        }
+    } else {
+        CTransactionRef ptx = stempool.get(tx.GetHash());
+        bool fMissingInputs = false;
+        CValidationState state;
+        std::list<CTransactionRef> lRemovedTxn;
+        AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+        RelayTransaction(tx, connman);
+    }
 }
 
 static void RelayAddress(const CAddress& addr, bool fReachable, CConnman* connman)
