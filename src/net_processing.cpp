@@ -1016,11 +1016,14 @@ static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman,
             destination->PushInventory(inv);
         }
     } else {
+        LogPrint(BCLog::DANDELION, "Dandelion fluff: %s\n", tx.GetHash().ToString());
         CTransactionRef ptx = stempool.get(tx.GetHash());
         bool fMissingInputs = false;
         CValidationState state;
         std::list<CTransactionRef> lRemovedTxn;
         AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+        LogPrint(BCLog::MEMPOOL, "AcceptToMemoryPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
+                 pfrom->GetId(), tx.GetHash().ToString(), mempool.size(), mempool.DynamicMemoryUsage() / 1000);
         RelayTransaction(tx, connman);
     }
 }
