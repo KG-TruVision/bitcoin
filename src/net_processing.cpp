@@ -2182,6 +2182,9 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         if (!AlreadyHave(inv) &&
             AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
+            if (connman->isTxDandelionEmbargoed(tx.GetHash())) {
+                connman->removeDandelionEmbargo(tx.GetHash());
+            }
             mempool.check(pcoinsTip.get());
             RelayTransaction(tx, connman);
             for (unsigned int i = 0; i < tx.vout.size(); i++) {
@@ -2349,9 +2352,15 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         std::list<CTransactionRef> lRemovedTxn;
         if (connman->isDandelionInbound(pfrom)) {
             if (!stempool.exists(inv.hash)) {
-                AcceptToMemoryPool(stempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
-                LogPrint(BCLog::MEMPOOL, "AcceptToStemPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
-                         pfrom->GetId(), tx.GetHash().ToString(), stempool.size(), stempool.DynamicMemoryUsage() / 1000);
+                bool ret = AcceptToMemoryPool(stempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+                if (ret) {
+                    LogPrint(BCLog::MEMPOOL, "AcceptToStemPool: peer=%d: accepted %s (poolsz %u txn, %u kB)\n",
+                             pfrom->GetId(), tx.GetHash().ToString(), stempool.size(), stempool.DynamicMemoryUsage() / 1000);
+                    int64_t nCurrTime = GetTimeMicros();
+                    int64_t nEmbargo = 1000000*DANDELION_EMBARGO_STANDARD+PoissonNextSend(nCurrTime, DANDELION_EMBARGO_ADDITION);
+                    connman->insertDandelionEmbargo(tx.GetHash(),nEmbargo);
+                    LogPrint(BCLog::DANDELION, "dandelion-tx %s embargoed for %d seconds\n", tx.GetHash().ToString(), (nEmbargo-nCurrTime)/1000000);
+                }
             }
             if (stempool.exists(inv.hash)) {
                 RelayDandelionTransaction(tx, connman, pfrom);

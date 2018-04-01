@@ -89,6 +89,10 @@ static const unsigned int DEFAULT_MISBEHAVING_BANTIME = 60 * 60 * 24;  // Defaul
 
 /** The average interval in seconds between Dandelion shuffles */
 static const int DANDELION_SHUFFLE_INTERVAL = 60; // 60 for testing purposes; change to ~600 later
+/** The minimum amount of time a Dandelion transaction is embargoed (seconds) */
+static const int DANDELION_EMBARGO_STANDARD = 10;
+/** The average additional embargo time beyond the minimum amount (seconds) */
+static const int DANDELION_EMBARGO_ADDITION = 20;
 
 typedef int64_t NodeId;
 
@@ -325,6 +329,9 @@ public:
     bool setLocalDandelionOutbound();
     bool localDandelionOutboundPushInventory(const CInv& inv);
     std::string dandelionRoutingDataToString() const;
+    bool insertDandelionEmbargo(const uint256& hash, const int64_t& embargo);
+    bool isTxDandelionEmbargoed(const uint256& hash) const;
+    bool removeDandelionEmbargo(const uint256& hash);
 
 private:
     struct ListenSocket {
@@ -420,6 +427,7 @@ private:
     std::vector<CNode*> vDandelionOutbound;
     CNode* localDandelionOutbound = nullptr;
     std::map<CNode*, CNode*> mDandelionRouting;
+    std::map<uint256, int64_t> mDandelionEmbargo;
     // Dandelion helper functions
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);

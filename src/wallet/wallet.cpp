@@ -1760,6 +1760,10 @@ bool CWalletTx::RelayWalletTransaction(CConnman* connman)
         if (InMempool() || AcceptToMemoryPool(maxTxFee, state)) {
             LogPrintf("Relaying wtx %s\n", GetHash().ToString());
             if (connman) {
+                int64_t nCurrTime = GetTimeMicros();
+                int64_t nEmbargo = 1000000*DANDELION_EMBARGO_STANDARD+PoissonNextSend(nCurrTime, DANDELION_EMBARGO_ADDITION);
+                connman->insertDandelionEmbargo(GetHash(),nEmbargo);
+                LogPrint(BCLog::DANDELION, "dandelion-tx %s embargoed for %d seconds\n", GetHash().ToString(), (nEmbargo-nCurrTime)/1000000);
                 if (!connman->isLocalDandelionOutboundSet()) {
                     connman->setLocalDandelionOutbound();
                     LogPrint(BCLog::DANDELION, "Added local Dandelion outbound connection:\n%s", connman->dandelionRoutingDataToString());
@@ -1768,7 +1772,6 @@ bool CWalletTx::RelayWalletTransaction(CConnman* connman)
                 if (connman->isLocalDandelionOutboundSet()) {
                     return connman->localDandelionOutboundPushInventory(inv);
                 } else {
-                    //connman->AddDandelionTxToShelf(inv);
                     return false;
                 }
             }
