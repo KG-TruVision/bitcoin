@@ -322,6 +322,9 @@ public:
 
     void WakeMessageHandler();
 
+    // Public Dandelion field
+    std::map<uint256, int64_t> mDandelionEmbargo;
+
     // Dandelion methods
     bool isDandelionInbound(const CNode* const pnode) const;
     CNode* getDandelionDestination(CNode* pfrom);
@@ -427,7 +430,6 @@ private:
     std::vector<CNode*> vDandelionOutbound;
     CNode* localDandelionOutbound = nullptr;
     std::map<CNode*, CNode*> mDandelionRouting;
-    std::map<uint256, int64_t> mDandelionEmbargo;
     // Dandelion helper functions
     CNode* GetDandelionDestination() const;
     void CloseDandelionConnections(const CNode* const pnode);

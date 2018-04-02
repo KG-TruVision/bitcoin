@@ -1028,6 +1028,30 @@ static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman,
     }
 }
 
+static void CheckDandelionEmbargoes(CConnman* connman)
+{
+    int64_t nCurrTime = GetTimeMicros();
+    for (auto iter=connman->mDandelionEmbargo.begin(); iter!=connman->mDandelionEmbargo.end();) {
+        if (mempool.exists(iter->first)) {
+            LogPrint(BCLog::DANDELION, "Embargoed dandeliontx %s found in mempool; removing from embargo map\n", iter->first.ToString());
+            iter = connman->mDandelionEmbargo.erase(iter);
+        } else if (iter->second < nCurrTime) {
+            LogPrint(BCLog::DANDELION, "dandeliontx %s embargo expired\n", iter->first.ToString());
+            CTransactionRef ptx = stempool.get(iter->first);
+            bool fMissingInputs = false;
+            CValidationState state;
+            std::list<CTransactionRef> lRemovedTxn;
+            AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+            LogPrint(BCLog::MEMPOOL, "AcceptToMemoryPool: accepted %s (poolsz %u txn, %u kB)\n",
+                     iter->first.ToString(), mempool.size(), mempool.DynamicMemoryUsage() / 1000);
+            RelayTransaction(*ptx, connman);
+            iter = connman->mDandelionEmbargo.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+}
+
 static void RelayAddress(const CAddress& addr, bool fReachable, CConnman* connman)
 {
     unsigned int nRelayNodes = fReachable ? 2 : 1; // limited relaying of addresses outside our network(s)
@@ -1548,6 +1572,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
     }
+
+    CheckDandelionEmbargoes(connman);
 
     if (strCommand == NetMsgType::REJECT)
     {
@@ -2359,7 +2385,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                     int64_t nCurrTime = GetTimeMicros();
                     int64_t nEmbargo = 1000000*DANDELION_EMBARGO_STANDARD+PoissonNextSend(nCurrTime, DANDELION_EMBARGO_ADDITION);
                     connman->insertDandelionEmbargo(tx.GetHash(),nEmbargo);
-                    LogPrint(BCLog::DANDELION, "dandelion-tx %s embargoed for %d seconds\n", tx.GetHash().ToString(), (nEmbargo-nCurrTime)/1000000);
+                    LogPrint(BCLog::DANDELION, "dandeliontx %s embargoed for %d seconds\n", tx.GetHash().ToString(), (nEmbargo-nCurrTime)/1000000);
                 }
             }
             if (stempool.exists(inv.hash)) {
