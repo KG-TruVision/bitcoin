@@ -83,6 +83,9 @@ static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
 // NOTE: When adjusting this, update rpcnet:setban's help ("24h")
 static const unsigned int DEFAULT_MISBEHAVING_BANTIME = 60 * 60 * 24;  // Default 24-hour ban
 
+/** Maximum number of outbound peers designated as Dandelion destinations */
+static const int DANDELION_MAX_DESTINATIONS = 2;
+
 typedef int64_t NodeId;
 
 struct AddedNodeInfo
@@ -310,6 +313,12 @@ public:
     unsigned int GetReceiveFloodSize() const;
 
     void WakeMessageHandler();
+
+    // Dandelion methods
+    bool isDandelionInbound(const CNode* const pnode) const;
+    bool isLocalDandelionDestinationSet() const;
+    bool setLocalDandelionDestination();
+
 private:
     struct ListenSocket {
         SOCKET socket;
@@ -397,6 +406,16 @@ private:
     std::list<CNode*> vNodesDisconnected;
     mutable CCriticalSection cs_vNodes;
     std::atomic<NodeId> nLastNodeId;
+
+    // Dandelion fields
+    std::vector<CNode*> vDandelionInbound;
+    std::vector<CNode*> vDandelionOutbound;
+    std::vector<CNode*> vDandelionDestination;
+    CNode* localDandelionDestination = nullptr;
+    std::map<CNode*, CNode*> mDandelionRoutes;
+    // Dandelion helper functions
+    CNode* SelectFromDandelionDestinations() const;
+    void CloseDandelionConnections(const CNode* const pnode);
 
     /** Services this instance offers */
     ServiceFlags nLocalServices;

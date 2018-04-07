@@ -1459,6 +1459,133 @@ void CConnman::WakeMessageHandler()
     condMsgProc.notify_one();
 }
 
+bool CConnman::isDandelionInbound(const CNode* const pnode) const
+{
+    return (std::find(vDandelionInbound.begin(), vDandelionInbound.end(), pnode) != vDandelionInbound.end());
+}
+
+bool CConnman::isLocalDandelionDestinationSet() const {
+    return (localDandelionDestination != nullptr);
+}
+
+bool CConnman::setLocalDandelionDestination() {
+    if (!isLocalDandelionDestinationSet()) {
+        localDandelionDestination = SelectFromDandelionDestinations();
+    }
+    return isLocalDandelionDestinationSet();
+}
+
+CNode* CConnman::SelectFromDandelionDestinations() const
+{
+    std::map<CNode*,uint64_t> mDandelionDestinationCounts;
+    for (size_t i=0; i<vDandelionDestination.size(); i++) {
+        mDandelionDestinationCounts.insert(std::make_pair(vDandelionDestination.at(i),0));
+    }
+    for (auto& e : mDandelionDestinationCounts) {
+        for (auto const& f : mDandelionRoutes) {
+            if (e.first == f.second) {
+                e.second+=1;
+            }
+        }
+    }
+    unsigned int minNumConnections = vDandelionInbound.size();
+    for (auto const& e : mDandelionDestinationCounts) {
+        if (e.second < minNumConnections) {
+            minNumConnections = e.second;
+        }
+    }
+    std::vector<CNode*> candidateDestinations;
+    for (auto const& e : mDandelionDestinationCounts) {
+        if (e.second == minNumConnections) {
+            candidateDestinations.push_back(e.first);
+        }
+    }
+    FastRandomContext rng;
+    CNode* dandelionDestination = nullptr;
+    if (candidateDestinations.size()>0) {
+        dandelionDestination = candidateDestinations.at(rng.randrange(candidateDestinations.size()));
+    }
+    return dandelionDestination;
+}
+
+void CConnman::CloseDandelionConnections(const CNode* const pnode) {
+    // Remove pnode from vDandelionInbound, if present
+    for (auto iter=vDandelionInbound.begin(); iter!=vDandelionInbound.end();) {
+        if (*iter==pnode) {
+            iter=vDandelionInbound.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+    // Remove pnode from vDandelionOutbound, if present
+    for (auto iter=vDandelionOutbound.begin(); iter!=vDandelionOutbound.end();) {
+        if (*iter==pnode) {
+            iter=vDandelionOutbound.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+    // Remove pnode from vDandelionDestination, if present
+    bool isDandelionDestination = false;
+    for (auto iter=vDandelionDestination.begin(); iter!=vDandelionDestination.end();) {
+        if (*iter==pnode) {
+            isDandelionDestination = true;
+            iter=vDandelionDestination.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+    // Generate a replacement Dandelion destination, if necessary
+    if (isDandelionDestination) {
+        // Gather a vector of candidate replacements (outbound peers that are not already destinations)
+        std::vector<CNode*> candidateReplacements;
+        for (auto iteri=vDandelionOutbound.begin(); iteri!=vDandelionOutbound.end();) {
+            bool eligibleCandidate = true;
+            for (auto iterj=vDandelionDestination.begin(); iterj!=vDandelionDestination.end();) {
+                if (*iteri==*iterj) {
+                    eligibleCandidate = false;
+                    iterj = vDandelionDestination.end();
+                } else {
+                    iterj++;
+                }
+            }
+            if (eligibleCandidate) {
+                candidateReplacements.push_back(*iteri);
+            }
+            iteri++;
+        }
+        // Select a candidate to be the replacement destination
+        FastRandomContext rng;
+        CNode* replacementDestination = nullptr;
+        if (candidateReplacements.size()>0) {
+            replacementDestination = candidateReplacements.at(rng.randrange(candidateReplacements.size()));
+        }
+        if (replacementDestination!=nullptr) {
+            vDandelionDestination.push_back(replacementDestination);
+        }
+    }
+    // Generate a replacement pnode, to be used if necessary
+    CNode* newPto = SelectFromDandelionDestinations();
+    // Remove from mDandelionRoutes, if present; if destination, try to replace
+    for(auto iter=mDandelionRoutes.begin(); iter!=mDandelionRoutes.end();) {
+        if (iter->first==pnode) {
+            iter = mDandelionRoutes.erase(iter);
+        } else if (iter->second==pnode) {
+            if (newPto==nullptr) {
+                iter = mDandelionRoutes.erase(iter);
+            } else {
+                iter->second = newPto;
+                iter++;
+            }
+        } else {
+            iter++;
+        }
+    }
+    // Replace localDandelionDestination if equal to pnode
+    if (localDandelionDestination==pnode) {
+        localDandelionDestination = newPto;
+    }
+}
 
 
 
