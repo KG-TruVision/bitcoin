@@ -416,6 +416,7 @@ private:
     // Dandelion helper functions
     CNode* SelectFromDandelionDestinations() const;
     void CloseDandelionConnections(const CNode* const pnode);
+    std::string GetDandelionRoutingDataDebugString() const;
 
     /** Services this instance offers */
     ServiceFlags nLocalServices;
