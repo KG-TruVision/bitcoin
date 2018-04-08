@@ -1816,12 +1816,21 @@ bool CWalletTx::RelayWalletTransaction(CConnman* connman)
         if (InMempool() || AcceptToMemoryPool(maxTxFee, state)) {
             LogPrintf("Relaying wtx %s\n", GetHash().ToString());
             if (connman) {
-                CInv inv(MSG_TX, GetHash());
-                connman->ForEachNode([&inv](CNode* pnode)
-                {
-                    pnode->PushInventory(inv);
-                });
-                return true;
+                if (gArgs.GetBoolArg("-dandelion", false)) {
+                    int64_t nCurrTime = GetTimeMicros();
+                    int64_t nEmbargo = 1000000*DANDELION_EMBARGO_MINIMUM+PoissonNextSend(nCurrTime, DANDELION_EMBARGO_AVG_ADD);
+                    connman->insertDandelionEmbargo(GetHash(),nEmbargo);
+                    LogPrint(BCLog::DANDELION, "dandeliontx %s embargoed for %d seconds\n", GetHash().ToString(), (nEmbargo-nCurrTime)/1000000);
+                    CInv inv(MSG_DANDELION_TX, GetHash());
+                    return connman->localDandelionDestinationPushInventory(inv);
+                } else {
+                    CInv inv(MSG_TX, GetHash());
+                    connman->ForEachNode([&inv](CNode* pnode)
+                    {
+                        pnode->PushInventory(inv);
+                    });
+                    return true;
+                }
             }
         }
     }
