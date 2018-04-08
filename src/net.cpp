@@ -1481,8 +1481,35 @@ bool CConnman::isLocalDandelionDestinationSet() const {
 bool CConnman::setLocalDandelionDestination() {
     if (!isLocalDandelionDestinationSet()) {
         localDandelionDestination = SelectFromDandelionDestinations();
+        LogPrint(BCLog::DANDELION, "Set local Dandelion destination:\n%s", GetDandelionRoutingDataDebugString());
     }
     return isLocalDandelionDestinationSet();
+}
+
+CNode* CConnman::getDandelionDestination(CNode* pfrom) {
+    for (auto const& e : mDandelionRoutes) {
+        if (pfrom==e.first) {
+            return e.second;
+        }
+    }
+    CNode* newPto = SelectFromDandelionDestinations();
+    if (newPto!=nullptr) {
+        mDandelionRoutes.insert(std::make_pair(pfrom, newPto));
+        LogPrint(BCLog::DANDELION, "Added Dandelion route:\n%s", GetDandelionRoutingDataDebugString());
+    }
+    return newPto;
+}
+
+bool CConnman::localDandelionDestinationPushInventory(const CInv& inv) {
+    if(isLocalDandelionDestinationSet()) {
+        localDandelionDestination->PushInventory(inv);
+        return true;
+    } else if (setLocalDandelionDestination()) {
+        localDandelionDestination->PushInventory(inv);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 CNode* CConnman::SelectFromDandelionDestinations() const

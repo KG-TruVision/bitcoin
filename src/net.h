@@ -320,6 +320,8 @@ public:
     bool isDandelionInbound(const CNode* const pnode) const;
     bool isLocalDandelionDestinationSet() const;
     bool setLocalDandelionDestination();
+    CNode* getDandelionDestination(CNode* pfrom);
+    bool localDandelionDestinationPushInventory(const CInv& inv);
 
 private:
     struct ListenSocket {
@@ -710,9 +712,13 @@ public:
 
     // inventory based relay
     CRollingBloomFilter filterInventoryKnown;
+    // Set of Dandelion transactions that should be known to this peer
+    std::set<uint256> setDandelionInventoryKnown;
     // Set of transaction ids we still have to announce.
     // They are sorted by the mempool before relay, so the order is not important.
     std::set<uint256> setInventoryTxToSend;
+    // List of Dandelion transaction ids to announce.
+    std::vector<uint256> vInventoryDandelionTxToSend;
     // List of block ids we still have announce.
     // There is no final sorting before sending, as they are always sent immediately
     // and in the order requested.
@@ -855,6 +861,10 @@ public:
         if (inv.type == MSG_TX) {
             if (!filterInventoryKnown.contains(inv.hash)) {
                 setInventoryTxToSend.insert(inv.hash);
+            }
+        } else if (inv.type == MSG_DANDELION_TX) {
+            if (setDandelionInventoryKnown.count(inv.hash)==0) {
+                vInventoryDandelionTxToSend.push_back(inv.hash);
             }
         } else if (inv.type == MSG_BLOCK) {
             vInventoryBlockToSend.push_back(inv.hash);
