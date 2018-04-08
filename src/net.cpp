@@ -1629,6 +1629,77 @@ std::string CConnman::GetDandelionRoutingDataDebugString() const {
     return dandelionRoutingDataDebugString;
 }
 
+void CConnman::DandelionShuffle() {
+    // Dandelion debug message
+    LogPrint(BCLog::DANDELION, "Before Dandelion shuffle:\n%s", GetDandelionRoutingDataDebugString());
+    {
+        // Lock node pointers
+        LOCK(cs_vNodes);
+        // Iterate through mDandelionRoutes to facilitate bookkeeping
+        for (auto iter=mDandelionRoutes.begin(); iter!=mDandelionRoutes.end();) {
+            iter = mDandelionRoutes.erase(iter);
+        }
+        // Set localDandelionDestination to nulltpr and perform bookkeeping
+        if (localDandelionDestination!=nullptr) {
+            localDandelionDestination = nullptr;
+        }
+        // Clear vDandelionDestination
+        //  (bookkeeping already done while iterating through mDandelionRoutes)
+        vDandelionDestination.clear();
+        // Repopulate vDandelionDestination
+        while (vDandelionDestination.size()<DANDELION_MAX_DESTINATIONS &&
+               vDandelionDestination.size()<vDandelionOutbound.size()) {
+            std::vector<CNode*> candidateDestinations;
+            for (auto iteri=vDandelionOutbound.begin(); iteri!=vDandelionOutbound.end();) {
+                bool eligibleCandidate = true;
+                for (auto iterj=vDandelionDestination.begin(); iterj!=vDandelionDestination.end();) {
+                    if (*iteri==*iterj) {
+                        eligibleCandidate = false;
+                        iterj = vDandelionDestination.end();
+                    } else {
+                        iterj++;
+                    }
+                }
+                if (eligibleCandidate) {
+                    candidateDestinations.push_back(*iteri);
+                }
+                iteri++;
+            }
+            FastRandomContext rng;
+            if (candidateDestinations.size()>0) {
+                vDandelionDestination.push_back(candidateDestinations.at(rng.randrange(candidateDestinations.size())));
+            } else {
+                break;
+            }
+        }
+        // Generate new routes
+        for (auto pnode : vDandelionInbound) {
+            CNode* pto = SelectFromDandelionDestinations();
+            if (pto != nullptr) {
+                mDandelionRoutes.insert(std::make_pair(pnode, pto));
+            }
+        }
+        localDandelionDestination = SelectFromDandelionDestinations();
+    }
+    // Dandelion debug message
+    LogPrint(BCLog::DANDELION, "After Dandelion shuffle:\n%s", GetDandelionRoutingDataDebugString());
+}
+
+void CConnman::ThreadDandelionShuffle() {
+    int64_t nCurrTime = GetTimeMicros();
+    int64_t nNextDandelionShuffle = PoissonNextSend(nCurrTime, DANDELION_SHUFFLE_INTERVAL);
+    while (!interruptNet) {
+        nCurrTime = GetTimeMicros();
+        if (nCurrTime > nNextDandelionShuffle) {
+            DandelionShuffle();
+            nNextDandelionShuffle = PoissonNextSend(nCurrTime, DANDELION_SHUFFLE_INTERVAL);
+            // Sleep until the next shuffle time
+            if (!interruptNet.sleep_for(std::chrono::milliseconds((nNextDandelionShuffle-nCurrTime)/1000))) {
+                return;
+            }
+        }
+    }
+}
 
 
 
@@ -2553,6 +2624,9 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     // Process messages
     threadMessageHandler = std::thread(&TraceThread<std::function<void()> >, "msghand", std::function<void()>(std::bind(&CConnman::ThreadMessageHandler, this)));
 
+    // Dandelion shuffle
+    threadDandelionShuffle = std::thread(&TraceThread<std::function<void()> >, "dandelion", std::function<void()>(std::bind(&CConnman::ThreadDandelionShuffle, this)));
+
     // Dump network addresses
     scheduler.scheduleEvery(std::bind(&CConnman::DumpData, this), DUMP_ADDRESSES_INTERVAL * 1000);
 
@@ -2610,6 +2684,8 @@ void CConnman::Stop()
         threadDNSAddressSeed.join();
     if (threadSocketHandler.joinable())
         threadSocketHandler.join();
+    if (threadDandelionShuffle.joinable())
+        threadDandelionShuffle.join();
 
     if (fAddressesInitialized)
     {

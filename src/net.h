@@ -85,6 +85,8 @@ static const unsigned int DEFAULT_MISBEHAVING_BANTIME = 60 * 60 * 24;  // Defaul
 
 /** Maximum number of outbound peers designated as Dandelion destinations */
 static const int DANDELION_MAX_DESTINATIONS = 2;
+/** Expected time between Dandelion routing shuffles (in seconds). */
+static const int DANDELION_SHUFFLE_INTERVAL = 600;
 
 typedef int64_t NodeId;
 
@@ -338,6 +340,7 @@ private:
     void AcceptConnection(const ListenSocket& hListenSocket);
     void ThreadSocketHandler();
     void ThreadDNSAddressSeed();
+    void ThreadDandelionShuffle();
 
     uint64_t CalculateKeyedNetGroup(const CAddress& ad) const;
 
@@ -417,6 +420,7 @@ private:
     CNode* SelectFromDandelionDestinations() const;
     void CloseDandelionConnections(const CNode* const pnode);
     std::string GetDandelionRoutingDataDebugString() const;
+    void DandelionShuffle();
 
     /** Services this instance offers */
     ServiceFlags nLocalServices;
@@ -448,6 +452,7 @@ private:
     std::thread threadOpenAddedConnections;
     std::thread threadOpenConnections;
     std::thread threadMessageHandler;
+    std::thread threadDandelionShuffle;
 
     /** flag for deciding to connect to an extra outbound peer,
      *  in excess of nMaxOutbound
