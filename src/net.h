@@ -87,6 +87,10 @@ static const unsigned int DEFAULT_MISBEHAVING_BANTIME = 60 * 60 * 24;  // Defaul
 static const int DANDELION_MAX_DESTINATIONS = 2;
 /** Expected time between Dandelion routing shuffles (in seconds). */
 static const int DANDELION_SHUFFLE_INTERVAL = 600;
+/** The minimum amount of time a Dandelion transaction is embargoed (seconds) */
+static const int DANDELION_EMBARGO_MINIMUM = 10;
+/** The average additional embargo time beyond the minimum amount (seconds) */
+static const int DANDELION_EMBARGO_AVG_ADD = 20;
 
 typedef int64_t NodeId;
 
@@ -316,12 +320,17 @@ public:
 
     void WakeMessageHandler();
 
+    // Public Dandelion field
+    std::map<uint256, int64_t> mDandelionEmbargo;
     // Dandelion methods
     bool isDandelionInbound(const CNode* const pnode) const;
     bool isLocalDandelionDestinationSet() const;
     bool setLocalDandelionDestination();
     CNode* getDandelionDestination(CNode* pfrom);
     bool localDandelionDestinationPushInventory(const CInv& inv);
+    bool insertDandelionEmbargo(const uint256& hash, const int64_t& embargo);
+    bool isTxDandelionEmbargoed(const uint256& hash) const;
+    bool removeDandelionEmbargo(const uint256& hash);
 
 private:
     struct ListenSocket {

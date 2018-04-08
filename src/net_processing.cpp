@@ -1056,6 +1056,30 @@ static void RelayDandelionTransaction(const CTransaction& tx, CConnman* connman,
     }
 }
 
+static void CheckDandelionEmbargoes(CConnman* connman)
+{
+    int64_t nCurrTime = GetTimeMicros();
+    for (auto iter=connman->mDandelionEmbargo.begin(); iter!=connman->mDandelionEmbargo.end();) {
+        if (mempool.exists(iter->first)) {
+            LogPrint(BCLog::DANDELION, "Embargoed dandeliontx %s found in mempool; removing from embargo map\n", iter->first.ToString());
+            iter = connman->mDandelionEmbargo.erase(iter);
+        } else if (iter->second < nCurrTime) {
+            LogPrint(BCLog::DANDELION, "dandeliontx %s embargo expired\n", iter->first.ToString());
+            CValidationState state;
+            CTransactionRef ptx = stempool.get(iter->first);
+            bool fMissingInputs = false;
+            std::list<CTransactionRef> lRemovedTxn;
+            AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */);
+            LogPrint(BCLog::MEMPOOL, "AcceptToMemoryPool: accepted %s (poolsz %u txn, %u kB)\n",
+                     iter->first.ToString(), mempool.size(), mempool.DynamicMemoryUsage() / 1000);
+            RelayTransaction(*ptx, connman);
+            iter = connman->mDandelionEmbargo.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+}
+
 static void RelayAddress(const CAddress& addr, bool fReachable, CConnman* connman)
 {
     unsigned int nRelayNodes = fReachable ? 2 : 1; // limited relaying of addresses outside our network(s)

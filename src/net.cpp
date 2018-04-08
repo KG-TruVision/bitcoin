@@ -1512,6 +1512,33 @@ bool CConnman::localDandelionDestinationPushInventory(const CInv& inv) {
     }
 }
 
+bool CConnman::insertDandelionEmbargo(const uint256& hash, const int64_t& embargo) {
+    auto pair = mDandelionEmbargo.insert(std::make_pair(hash, embargo));
+    return pair.second;
+}
+
+bool CConnman::isTxDandelionEmbargoed(const uint256& hash) const {
+    auto pair = mDandelionEmbargo.find(hash);
+    if (pair != mDandelionEmbargo.end()) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool CConnman::removeDandelionEmbargo(const uint256& hash) {
+    bool removed = false;
+    for (auto iter=mDandelionEmbargo.begin(); iter!=mDandelionEmbargo.end();) {
+        if (iter->first==hash) {
+            iter = mDandelionEmbargo.erase(iter);
+            removed = true;
+        } else {
+            iter++;
+        }
+    }
+    return removed;
+}
+
 CNode* CConnman::SelectFromDandelionDestinations() const
 {
     std::map<CNode*,uint64_t> mDandelionDestinationCounts;
