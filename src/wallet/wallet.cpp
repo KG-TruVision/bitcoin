@@ -4217,8 +4217,14 @@ bool CWalletTx::AcceptToMemoryPool(const CAmount& nAbsurdFee, CValidationState& 
     // user could call sendmoney in a loop and hit spurious out of funds errors
     // because we think that this newly generated transaction's change is
     // unavailable as we're not yet aware that it is in the mempool.
-    bool ret = ::AcceptToMemoryPool(mempool, state, tx, nullptr /* pfMissingInputs */,
-                                nullptr /* plTxnReplaced */, false /* bypass_limits */, nAbsurdFee);
+    bool ret;
+    if (gArgs.GetBoolArg("-dandelion", false)) {
+        ret = ::AcceptToMemoryPool(stempool, state, tx, nullptr /* pfMissingInputs */,
+                                    nullptr /* plTxnReplaced */, false /* bypass_limits */, nAbsurdFee);
+    } else {
+        ret = ::AcceptToMemoryPool(mempool, state, tx, nullptr /* pfMissingInputs */,
+                                    nullptr /* plTxnReplaced */, false /* bypass_limits */, nAbsurdFee);
+    }
     fInMempool |= ret;
     return ret;
 }
