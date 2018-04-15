@@ -2241,6 +2241,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         bool fMissingInputs = false;
         CValidationState state;
+        CValidationState dummyState; // Dummy state for Dandelion stempool
 
         pfrom->setAskFor.erase(inv.hash);
         mapAlreadyAskedFor.erase(inv.hash);
@@ -2249,11 +2250,15 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         if (!AlreadyHave(inv) &&
             AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
+            // Changes to mempool should also be made to Dandelion stempool
+            AcceptToMemoryPool(stempool, dummyState, ptx, nullptr, nullptr, false, 0);
             if (connman->isTxDandelionEmbargoed(tx.GetHash())) {
                 LogPrint(BCLog::DANDELION, "Embargoed dandeliontx %s found in mempool; removing from embargo map\n", tx.GetHash().ToString());
                 connman->removeDandelionEmbargo(tx.GetHash());
             }
             mempool.check(pcoinsTip.get());
+            // Changes to mempool should also be made to Dandelion stempool
+            stempool.check(pcoinsTip.get());
             RelayTransaction(tx, connman);
             for (unsigned int i = 0; i < tx.vout.size(); i++) {
                 vWorkQueue.emplace_back(inv.hash, i);
@@ -2286,11 +2291,14 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                     // resolution (that is, feeding people an invalid transaction based on LegitTxX in order to get
                     // anyone relaying LegitTxX banned)
                     CValidationState stateDummy;
+                    CValidationState stateDummyDandelion;
 
 
                     if (setMisbehaving.count(fromPeer))
                         continue;
                     if (AcceptToMemoryPool(mempool, stateDummy, porphanTx, &fMissingInputs2, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
+                        // Changes to mempool should also be made to Dandelion stempool
+                        AcceptToMemoryPool(stempool, stateDummyDandelion, porphanTx, nullptr, nullptr, false, 0);
                         LogPrint(BCLog::MEMPOOL, "   accepted orphan tx %s\n", orphanHash.ToString());
                         RelayTransaction(orphanTx, connman);
                         for (unsigned int i = 0; i < orphanTx.vout.size(); i++) {
@@ -2321,6 +2329,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                         }
                     }
                     mempool.check(pcoinsTip.get());
+                    // Changes to mempool should also be made to Dandelion stempool
+                    stempool.check(pcoinsTip.get());
                 }
             }
 
