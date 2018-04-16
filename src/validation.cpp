@@ -481,9 +481,10 @@ void UpdateMempoolForReorg(DisconnectedBlockTransactions &disconnectpool, bool f
     while (it != disconnectpool.queuedTx.get<insertion_order>().rend()) {
         // ignore validation errors in resurrected transactions
         CValidationState stateDummy;
-        if (!fAddToMempool || (*it)->IsCoinBase() ||
-            !AcceptToMemoryPool(mempool, stateDummy, *it, nullptr /* pfMissingInputs */,
-                                nullptr /* plTxnReplaced */, true /* bypass_limits */, 0 /* nAbsurdFee */)) {
+        bool ret = !AcceptToMemoryPool(mempool, stateDummy, *it, nullptr, nullptr, true, 0);
+        CValidationState dandelionStateDummy;
+        AcceptToMemoryPool(stempool, dandelionStateDummy, *it, nullptr, nullptr, true, 0);
+        if (!fAddToMempool || (*it)->IsCoinBase() || ret) {
             // If the transaction doesn't make it in to the mempool, remove any
             // transactions that depend on it (which would now be orphans).
             mempool.removeRecursive(**it, MemPoolRemovalReason::REORG);
