@@ -2309,6 +2309,11 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
             vDandelionDestination.push_back(pnode);
         }
         LogPrint(BCLog::DANDELION, "Added outbound Dandelion connection:\n%s", GetDandelionRoutingDataDebugString());
+        // Dandelion service discovery
+        uint256 dummyHash;
+        dummyHash.SetHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        CInv dummyInv(MSG_DANDELION_TX, dummyHash);
+        pnode->PushInventory(dummyInv);
     }
 }
 

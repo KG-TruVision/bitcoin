@@ -1288,14 +1288,26 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             if (inv.type == MSG_DANDELION_TX || inv.type == MSG_DANDELION_WITNESS_TX) {
                 int nSendFlags = (inv.type == MSG_DANDELION_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
                 auto txinfo = stempool.info(inv.hash);
+                uint256 dandelionServiceDiscoveryHash;
+                dandelionServiceDiscoveryHash.SetHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
                 if (txinfo.tx && !connman->isDandelionInbound(pfrom) && pfrom->setDandelionInventoryKnown.count(inv.hash)!=0) {
                     connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::DANDELIONTX, *txinfo.tx));
+                    push = true;
+                } else if (inv.hash==dandelionServiceDiscoveryHash && pfrom->setDandelionInventoryKnown.count(inv.hash)!=0) {
+                    LogPrint(BCLog::DANDELION, "Peer %d supports Dandelion\n", pfrom->GetId());
+                    pfrom->fSupportsDandelion = true;
                     push = true;
                 }
             } else if(inv.type == MSG_TX || inv.type == MSG_WITNESS_TX) {
                 auto mi = mapRelay.find(inv.hash);
                 int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
-                if (mi != mapRelay.end()) {
+                if (!pfrom->fSupportsDandelion && !connman->isDandelionInbound(pfrom) && pfrom->setDandelionInventoryKnown.count(inv.hash)!=0) {
+                    auto txinfo = stempool.info(inv.hash);
+                    if (txinfo.tx) {
+                        connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *txinfo.tx));
+                        push = true;
+                    }
+                } else if (mi != mapRelay.end()) {
                     connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
                     push = true;
                 } else if (pfrom->timeLastMempoolReq) {
@@ -2001,9 +2013,12 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             else if (inv.type == MSG_DANDELION_TX) {
                 auto result = pfrom->setDandelionInventoryKnown.insert(inv.hash);
                 fAlreadyHave = !result.second;
+                uint256 dandelionServiceDiscoveryHash;
+                dandelionServiceDiscoveryHash.SetHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
                 if (fBlocksOnly) {
                     LogPrint(BCLog::NET, "transaction (%s) inv sent in violation of protocol peer=%d\n", inv.hash.ToString(), pfrom->GetId());
-                } else if (!fAlreadyHave && !fImporting && !fReindex && !IsInitialBlockDownload() && connman->isDandelionInbound(pfrom)) {
+                } else if ((!fAlreadyHave && !fImporting && !fReindex && !IsInitialBlockDownload() && connman->isDandelionInbound(pfrom)) ||
+                           (inv.hash==dandelionServiceDiscoveryHash)) {
                     pfrom->AskFor(inv);
                 }
             }
@@ -3593,7 +3608,13 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
             // Add Dandelion transactions
             for (const uint256& hash : pto->vInventoryDandelionTxToSend) {
                 pto->setDandelionInventoryKnown.insert(hash);
-                vInv.push_back(CInv(MSG_DANDELION_TX, hash));
+                uint256 dandelionServiceDiscoveryHash;
+                dandelionServiceDiscoveryHash.SetHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+                if (!pto->fSupportsDandelion && hash!=dandelionServiceDiscoveryHash) {
+                    vInv.push_back(CInv(MSG_TX, hash));
+                } else {
+                    vInv.push_back(CInv(MSG_DANDELION_TX, hash));
+                }
                 if (vInv.size() == MAX_INV_SZ) {
                     connman->PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
                     vInv.clear();
